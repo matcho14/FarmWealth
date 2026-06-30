@@ -1,13 +1,20 @@
 <?php
 namespace App\Http\Controllers;
-use App\Models\{PurchaseInvoice, PurchaseInvoiceItem, Item, Supplier, Treasury, JournalEntry, JournalEntryLine};
+use App\Models\{PurchaseInvoice, PurchaseInvoiceItem, Item, Supplier, Treasury, JournalEntry, JournalEntryLine, ChartOfAccount};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseInvoiceController extends Controller
 {
-    public function index() {
-        $invoices = PurchaseInvoice::with('supplier')->latest()->paginate(20);
+    public function index(Request $request) {
+        $query = PurchaseInvoice::with('supplier')->latest();
+        if ($request->has('category')) {
+            $category = $request->query('category');
+            $query->whereHas('items.item', function($q) use ($category) {
+                $q->where('category', $category);
+            });
+        }
+        $invoices = $query->paginate(20);
         return view('purchase-invoices.index', compact('invoices'));
     }
 
@@ -54,6 +61,10 @@ class PurchaseInvoiceController extends Controller
                 'notes'           => $request->notes,
             ]);
 
+            $feedAmount = 0;
+            $medicineAmount = 0;
+            $otherAmount = 0;
+
             foreach ($itemsData as $row) {
                 $lineTotal = $row['quantity'] * $row['unit_price'];
                 PurchaseInvoiceItem::create([
@@ -67,6 +78,13 @@ class PurchaseInvoiceController extends Controller
                 if ($item) {
                     $item->increment('quantity_in_stock', $row['quantity']);
                     $item->update(['last_purchase_price' => $row['unit_price']]);
+                    if ($item->category === 'feed') {
+                        $feedAmount += $lineTotal;
+                    } elseif ($item->category === 'medicine') {
+                        $medicineAmount += $lineTotal;
+                    } elseif ($item->category === 'other') {
+                        $otherAmount += $lineTotal;
+                    }
                 }
             }
 
@@ -78,12 +96,49 @@ class PurchaseInvoiceController extends Controller
                 'reference_id'   => $invoice->id,
             ]);
 
+            $feedAccount = ChartOfAccount::where('code', '5301')->first();
+            $medicineAccount = ChartOfAccount::where('code', '5302')->first();
+            $otherAccount = ChartOfAccount::where('code', '5303')->first();
+
+            if ($feedAmount > 0 && $feedAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $feedAccount->id,
+                    'debit'            => $feedAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات علف - فاتورة شراء رقم ' . $invoice->invoice_number,
+                ]);
+            }
+
+            if ($medicineAmount > 0 && $medicineAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $medicineAccount->id,
+                    'debit'            => $medicineAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات أدوية - فاتورة شراء رقم ' . $invoice->invoice_number,
+                ]);
+            }
+
+            if ($otherAmount > 0 && $otherAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $otherAccount->id,
+                    'debit'            => $otherAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات عامة - فاتورة شراء رقم ' . $invoice->invoice_number,
+                ]);
+            }
+
             JournalEntryLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_type'     => 'supplier',
                 'account_id'       => $invoice->supplier_id,
                 'debit'            => 0,
-                'credit'           => $totalAmount,
+                'credit'           => $feedAmount + $medicineAmount + $otherAmount,
                 'description'      => 'فاتورة شراء رقم ' . $invoice->invoice_number,
             ]);
 
@@ -167,6 +222,10 @@ class PurchaseInvoiceController extends Controller
                 'notes'           => $request->notes,
             ]);
 
+            $feedAmount = 0;
+            $medicineAmount = 0;
+            $otherAmount = 0;
+
             foreach ($itemsData as $row) {
                 $lineTotal = $row['quantity'] * $row['unit_price'];
                 PurchaseInvoiceItem::create([
@@ -180,6 +239,13 @@ class PurchaseInvoiceController extends Controller
                 if ($item) {
                     $item->increment('quantity_in_stock', $row['quantity']);
                     $item->update(['last_purchase_price' => $row['unit_price']]);
+                    if ($item->category === 'feed') {
+                        $feedAmount += $lineTotal;
+                    } elseif ($item->category === 'medicine') {
+                        $medicineAmount += $lineTotal;
+                    } elseif ($item->category === 'other') {
+                        $otherAmount += $lineTotal;
+                    }
                 }
             }
 
@@ -204,12 +270,49 @@ class PurchaseInvoiceController extends Controller
 
             $entry->lines()->delete();
 
+            $feedAccount = ChartOfAccount::where('code', '5301')->first();
+            $medicineAccount = ChartOfAccount::where('code', '5302')->first();
+            $otherAccount = ChartOfAccount::where('code', '5303')->first();
+
+            if ($feedAmount > 0 && $feedAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $feedAccount->id,
+                    'debit'            => $feedAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات علف - تعديل فاتورة شراء رقم ' . $purchaseInvoice->invoice_number,
+                ]);
+            }
+
+            if ($medicineAmount > 0 && $medicineAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $medicineAccount->id,
+                    'debit'            => $medicineAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات أدوية - تعديل فاتورة شراء رقم ' . $purchaseInvoice->invoice_number,
+                ]);
+            }
+
+            if ($otherAmount > 0 && $otherAccount) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $otherAccount->id,
+                    'debit'            => $otherAmount,
+                    'credit'           => 0,
+                    'description'      => 'مشتريات عامة - تعديل فاتورة شراء رقم ' . $purchaseInvoice->invoice_number,
+                ]);
+            }
+
             JournalEntryLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_type'     => 'supplier',
                 'account_id'       => $purchaseInvoice->supplier_id,
                 'debit'            => 0,
-                'credit'           => $totalAmount,
+                'credit'           => $feedAmount + $medicineAmount + $otherAmount,
                 'description'      => 'فاتورة شراء رقم ' . $purchaseInvoice->invoice_number,
             ]);
 

@@ -364,7 +364,12 @@
                             @if($user)
                                 <li><div class="dropdown-header">{{ $user->name }}</div></li>
                                 <li><a class="dropdown-item" href="{{ route('dashboard') }}"><i class="fa-solid fa-gauge-high"></i> لوحة التحكم</a></li>
-                                <li><hr class="dropdown-divider"></li>
+<li><hr class="dropdown-divider"></li>
+                             <li><div class="dropdown-header">الإعدادات</div></li>
+                             @if($user && $user->hasPermission('units'))
+                                 <li><a class="dropdown-item {{ request()->routeIs('units.*') ? 'active' : '' }}" href="{{ route('units.index') }}"><i class="fa-solid fa-balance-scale"></i> وحدات القياس</a></li>
+                             @endif
+                             <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <form action="{{ route('logout') }}" method="POST" class="m-0">
                                         @csrf

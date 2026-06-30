@@ -41,7 +41,9 @@ Route::get('/annual-report', [AnnualReportController::class, 'index'])->name('an
 
 Route::get('/expense-report', [FinancialRecordController::class, 'expenseReport'])->name('expense-report');
 
-Route::resource('cycles', CycleController::class);
+Route::get('sheds/{shed}/cycles/create', [CycleController::class, 'create'])->name('cycles.create');
+Route::post('sheds/{shed}/cycles', [CycleController::class, 'store'])->name('cycles.store');
+Route::resource('cycles', CycleController::class)->except(['create', 'store']);
 Route::get('cycles/{cycle}/mortality/edit', [CycleController::class, 'editMortality'])->name('cycles.editMortality');
 Route::patch('cycles/{cycle}/mortality', [CycleController::class, 'updateMortality'])->name('cycles.updateMortality');
 Route::get('cycles/{cycle}/close', [CycleController::class, 'closeCycleForm'])->name('cycles.close');
@@ -75,7 +77,9 @@ Route::delete('cycles/{cycle}/mortality/{mortalityRecord}', [CycleController::cl
 Route::get('cycles/{cycle}/export-statement', [CycleController::class, 'exportStatement'])->name('cycles.export_statement');
 
 Route::resource('suppliers', SupplierController::class);
+Route::get('suppliers/{supplier}/export', [SupplierController::class, 'exportStatement'])->name('suppliers.export');
 Route::resource('clients', ClientController::class);
+Route::get('clients/{client}/export', [ClientController::class, 'exportStatement'])->name('clients.export');
 Route::resource('items', ItemController::class);
 Route::resource('sheds', ShedController::class);
 

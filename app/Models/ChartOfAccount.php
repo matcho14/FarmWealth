@@ -124,6 +124,30 @@ class ChartOfAccount extends Model
         $debit = (float) ($line->total_debit ?? 0);
         $credit = (float) ($line->total_credit ?? 0);
 
-        return $base + $debit - $credit;
+        if ($this->linkable_type && $this->linkable_id) {
+            $type = '';
+            if ($this->linkable_type === \App\Models\Client::class || $this->linkable_type === 'Client') {
+                $type = 'client';
+            } elseif ($this->linkable_type === \App\Models\Supplier::class || $this->linkable_type === 'Supplier') {
+                $type = 'supplier';
+            }
+            
+            if ($type) {
+                $linkedLine = \App\Models\JournalEntryLine::where('account_type', $type)
+                    ->where('account_id', $this->linkable_id)
+                    ->selectRaw('SUM(debit) as total_debit, SUM(credit) as total_credit')
+                    ->first();
+                $debit += (float) ($linkedLine->total_debit ?? 0);
+                $credit += (float) ($linkedLine->total_credit ?? 0);
+            }
+        }
+
+        if (in_array($this->account_type, ['liability_current', 'liability_long', 'equity', 'revenue'])) {
+            $balance = $base + $credit - $debit;
+        } else {
+            $balance = $base + $debit - $credit;
+        }
+
+        return $balance;
     }
 }

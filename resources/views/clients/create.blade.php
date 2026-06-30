@@ -26,6 +26,26 @@
                     <label class="form-label">الرصيد الافتتاحي (المبلغ المستحق من العميل)</label>
                     <input type="number" name="opening_balance" class="form-control" value="{{ old('opening_balance',0) }}" min="0" step="0.01">
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label">رمز الحساب <span class="text-danger">*</span></label>
+                    <input type="text" name="account_code" class="form-control @error('account_code') is-invalid @enderror" value="{{ old('account_code') }}" required>
+                    @error('account_code')<span class="invalid-feedback">{{ $message }}</span>@enderror
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">الحساب الأب</label>
+                    <select name="parent_id" class="form-select select2 @error('parent_id') is-invalid @enderror">
+                        <option value="">-- لا يوجد (حساب رئيسي) --</option>
+                        @foreach($parents as $parent)
+                            <option value="{{ $parent->id }}" {{ old('parent_id') == $parent->id ? 'selected' : '' }}>{{ $parent->code }} - {{ $parent->name }}</option>
+                            @if($parent->children)
+                                @foreach($parent->children as $child)
+                                    <option value="{{ $child->id }}" {{ old('parent_id') == $child->id ? 'selected' : '' }}>&nbsp;&nbsp;&nbsp;{{ $child->code }} - {{ $child->name }}</option>
+                                @endforeach
+                            @endif
+                        @endforeach
+                    </select>
+                    @error('parent_id')<span class="invalid-feedback">{{ $message }}</span>@enderror
+                </div>
                 <div class="col-12">
                     <label class="form-label">العنوان</label>
                     <input type="text" name="address" class="form-control" value="{{ old('address') }}">

@@ -123,7 +123,7 @@ let lineIdx = 2;
 const treasuries = @json($treasuries->map(fn($t)=>['id'=>$t->id,'name'=>$t->name]));
 const suppliers  = @json($suppliers->map(fn($s)=>['id'=>$s->id,'name'=>$s->name]));
 const clients    = @json($clients->map(fn($c)=>['id'=>$c->id,'name'=>$c->name]));
-const chartAccounts = @json($chartAccounts->map(fn($a)=>['id'=>$a->id,'name'=>$a->full_code + ' - ' + $a->name]));
+const chartAccounts = @json($chartAccounts->map(fn($a)=>['id'=>$a->id,'name'=>$a->full_code . ' - ' . $a->name]));
 
 function buildAccountOptions(type) {
     if (type === 'treasury') return treasuries.map(i=>`<option value="${i.id}">${i.name}</option>`).join('');

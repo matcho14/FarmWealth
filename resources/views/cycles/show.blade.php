@@ -169,6 +169,9 @@
                     <a href="{{ route('cycles.createSales', $cycle) }}" class="btn btn-primary ms-2">
                         <i class="fas fa-shopping-cart me-2"></i>إضافة مبيعات
                     </a>
+                    <a href="{{ route('inventory.dispense.create', $cycle->id) }}" class="btn btn-success ms-2">
+                        <i class="fas fa-hand-holding-medical me-2"></i>صرف دواء/علف
+                    </a>
                 </div>
                 <div class="col-md-6 text-end">
                     <a href="{{ route('cycles.closeCycleForm', $cycle) }}" class="btn btn-danger">

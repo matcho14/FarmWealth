@@ -8,8 +8,36 @@
     </a>
 </div>
 
+<div class="card mb-4">
+    <div class="card-body">
+        <form action="{{ route('sale-invoices.index') }}" method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">الدورة</label>
+                <select name="cycle_id" class="form-select select2">
+                    <option value="">-- الكل --</option>
+                    @foreach($cycles as $cycle)
+                        <option value="{{ $cycle->id }}" {{ request('cycle_id') == $cycle->id ? 'selected' : '' }}>{{ $cycle->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">العنبر</label>
+                <select name="shed_id" class="form-select select2">
+                    <option value="">-- الكل --</option>
+                    @foreach($sheds as $shed)
+                        <option value="{{ $shed->id }}" {{ request('shed_id') == $shed->id ? 'selected' : '' }}>{{ $shed->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search me-1"></i>بحث</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 @if($invoices->isEmpty())
-    <div class="alert alert-info">لا توجد فواتير بيع مسجلة بعد.</div>
+    <div class="alert alert-info">لا توجد فواتير بيع مطابقة.</div>
 @else
 <div class="card">
     <div class="card-body p-0">
@@ -17,7 +45,7 @@
             <table class="table table-hover mb-0 text-center">
                 <thead class="table-dark">
                     <tr>
-                        <th>#</th><th>رقم الفاتورة</th><th>العميل</th><th>التاريخ</th>
+                        <th>#</th><th>رقم الفاتورة</th><th>العميل</th><th>الدورة</th><th>العنبر</th><th>التاريخ</th>
                         <th>الإجمالي</th><th>المدفوع</th><th>المتبقي</th><th>الحالة</th><th>الإجراءات</th>
                     </tr>
                 </thead>
@@ -27,6 +55,8 @@
                         <td>{{ $loop->iteration }}</td>
                         <td class="fw-bold">{{ $invoice->invoice_number }}</td>
                         <td>{{ $invoice->client->name ?? '-' }}</td>
+                        <td>{{ $invoice->cycle->name ?? '-' }}</td>
+                        <td>{{ $invoice->shed->name ?? '-' }}</td>
                         <td>{{ $invoice->invoice_date->format('Y-m-d') }}</td>
                         <td>{{ format_number($invoice->total_amount, 2) }}</td>
                         <td>{{ format_number($invoice->paid_amount, 2) }}</td>

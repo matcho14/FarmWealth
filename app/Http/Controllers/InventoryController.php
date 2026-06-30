@@ -140,6 +140,17 @@ class InventoryController extends Controller
 
             // 3. إضافة قيد مالي في الدورة (باعتباره مصروفاً)
             $item = Item::find($request->item_id);
+            
+            // تحديد الحساب المحاسبي بناءً على تصنيف الصنف
+            $chartAccountId = null;
+            if ($item->category === 'medicine') {
+                $coa = \App\Models\ChartOfAccount::where('code', '5120')->orWhere('name', 'أدوية وعلاجات')->first();
+                $chartAccountId = $coa ? $coa->id : null;
+            } elseif ($item->category === 'feed') {
+                $coa = \App\Models\ChartOfAccount::where('code', '5110')->orWhere('name', 'علف')->first();
+                $chartAccountId = $coa ? $coa->id : null;
+            }
+
             $record = FinancialRecord::create([
                 'cycle_id'      => $cycle->id,
                 'type'          => 'expense',
@@ -150,6 +161,7 @@ class InventoryController extends Controller
                 'dispensation_id' => $dispensation->id,
                 'description'   => "صرف صنف: {$item->name} - دور {$request->floor_number} - " . ($request->notes ?? ''),
                 'record_date'   => $request->dispensation_date,
+                'chart_of_account_id' => $chartAccountId,
             ]);
 
             // 4. إنشاء قيد محاسبي (غير نقدي - استهلاك مخزون)
@@ -161,15 +173,26 @@ class InventoryController extends Controller
                 'reference_id'   => $record->id,
             ]);
 
-            // من ح/ مصروفات الدورة (مدين)
-            JournalEntryLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_type'     => 'cycle',
-                'account_id'       => $cycle->id,
-                'debit'            => $dispensation->total_cost,
-                'credit'           => 0,
-                'description'      => "استهلاك صنف {$item->name}",
-            ]);
+            // من ح/ مصروفات الدورة (مدين) - شجرة الحسابات إن وجد
+            if ($chartAccountId) {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'chart_of_account',
+                    'account_id'       => $chartAccountId,
+                    'debit'            => $dispensation->total_cost,
+                    'credit'           => 0,
+                    'description'      => "استهلاك صنف {$item->name} لدورة #{$cycle->id}",
+                ]);
+            } else {
+                JournalEntryLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_type'     => 'cycle',
+                    'account_id'       => $cycle->id,
+                    'debit'            => $dispensation->total_cost,
+                    'credit'           => 0,
+                    'description'      => "استهلاك صنف {$item->name}",
+                ]);
+            }
 
             // إلى ح/ المخزون (دائن) - لاحظ هنا نستخدم account_type='item' أو 'inventory'
             JournalEntryLine::create([

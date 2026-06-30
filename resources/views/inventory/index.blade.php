@@ -58,19 +58,8 @@
                     </table>
                 </div>
             </div>
-            <div class="card-footer bg-white border-0 py-3">
-                @php $activeCycle = $shed->cycles()->where('status', 'active')->first(); @endphp
-                @if($activeCycle)
-                    <a href="{{ route('inventory.dispense.create', $activeCycle->id) }}" class="btn btn-sm btn-outline-success w-100">
-                        <i class="fas fa-hand-holding-medical me-1"></i>صرف للدورة الحالية
-                    </a>
-                @else
-                    <button class="btn btn-sm btn-outline-secondary w-100" disabled>
-                        لا توجد دورة نشطة للصرف عليها
-                    </button>
-                @endif
-            </div>
         </div>
+
     </div>
     @empty
     <div class="col-12">

@@ -11,9 +11,17 @@ class SupplierController extends Controller
         return view('suppliers.index', compact('suppliers'));
     }
 
-    public function create() { return view('suppliers.create'); }
+public function create()
+    {
+        $parents = \App\Models\ChartOfAccount::active()
+            ->with('children:chart_of_accounts.id,chart_of_accounts.code,chart_of_accounts.name,chart_of_accounts.parent_id')
+            ->get();
 
-    public function store(Request $request) {
+        return view('suppliers.create', compact('parents'));
+    }
+
+    public function store(Request $request)
+    {
         $data = $request->validate([
             'name'            => 'required|string|max:255',
             'phone'           => 'nullable|string|max:20',
@@ -22,7 +30,23 @@ class SupplierController extends Controller
             'opening_balance' => 'nullable|numeric|min:0',
             'notes'           => 'nullable|string',
         ]);
-        Supplier::create($data);
+
+        $supplier = \App\Models\Supplier::create($data);
+
+        if ($request->filled('account_code')) {
+            \App\Models\ChartOfAccount::create([
+                'code' => $request->account_code,
+                'name' => $supplier->name,
+                'parent_id' => $request->parent_id,
+                'account_type' => 'liability_current',
+                'is_parent' => false,
+                'is_active' => true,
+                'opening_balance' => $supplier->opening_balance,
+                'linkable_type' => \App\Models\Supplier::class,
+                'linkable_id' => $supplier->id,
+            ]);
+        }
+
         return redirect()->route('suppliers.index')->with('success','تم إضافة المورد بنجاح');
     }
 
@@ -121,6 +145,9 @@ class SupplierController extends Controller
     }
 
     public function destroy(Supplier $supplier) {
+        if ($supplier->chartAccount) {
+            $supplier->chartAccount->delete();
+        }
         $supplier->delete();
         return redirect()->route('suppliers.index')->with('success','تم حذف المورد');
     }

@@ -1,28 +1,44 @@
 <?php
 namespace App\Http\Controllers;
-use App\Models\{SaleInvoice, SaleInvoiceItem, Item, Client, Treasury, JournalEntry, JournalEntryLine};
+use App\Models\{SaleInvoice, SaleInvoiceItem, Item, Client, Treasury, JournalEntry, JournalEntryLine, Cycle, Shed};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SaleInvoiceController extends Controller
 {
-    public function index() {
-        $invoices = SaleInvoice::with('client')->latest()->paginate(20);
-        return view('sale-invoices.index', compact('invoices'));
+    public function index(Request $request) {
+        $query = SaleInvoice::with(['client', 'cycle', 'shed'])->latest();
+        
+        if ($request->filled('cycle_id')) {
+            $query->where('cycle_id', $request->cycle_id);
+        }
+        if ($request->filled('shed_id')) {
+            $query->where('shed_id', $request->shed_id);
+        }
+
+        $invoices = $query->paginate(20);
+        $cycles = Cycle::orderBy('name')->get();
+        $sheds = Shed::orderBy('name')->get();
+
+        return view('sale-invoices.index', compact('invoices', 'cycles', 'sheds'));
     }
 
     public function create() {
         $clients    = Client::orderBy('name')->get();
         $items      = Item::orderBy('name')->get();
         $treasuries = Treasury::orderBy('name')->get();
+        $cycles     = Cycle::orderBy('name')->get();
+        $sheds      = Shed::orderBy('name')->get();
         $nextNumber = SaleInvoice::generateNumber();
-        return view('sale-invoices.create', compact('clients','items','treasuries','nextNumber'));
+        return view('sale-invoices.create', compact('clients','items','treasuries','cycles','sheds','nextNumber'));
     }
 
     public function store(Request $request) {
         $request->validate([
             'invoice_number' => 'required|string|unique:sale_invoices,invoice_number',
             'client_id'      => 'required|exists:clients,id',
+            'cycle_id'       => 'nullable|exists:cycles,id',
+            'shed_id'        => 'nullable|exists:sheds,id',
             'invoice_date'   => 'required|date',
             'paid_amount'    => 'nullable|numeric|min:0',
             'treasury_id'    => 'nullable|exists:treasuries,id',
@@ -51,6 +67,8 @@ class SaleInvoiceController extends Controller
             $invoice = SaleInvoice::create([
                 'invoice_number'  => $request->invoice_number,
                 'client_id'       => $request->client_id,
+                'cycle_id'        => $request->cycle_id,
+                'shed_id'         => $request->shed_id,
                 'treasury_id'     => $request->treasury_id,
                 'invoice_date'    => $request->invoice_date,
                 'total_amount'    => $totalAmount,
@@ -90,13 +108,17 @@ class SaleInvoiceController extends Controller
         $clients    = Client::orderBy('name')->get();
         $items      = Item::orderBy('name')->get();
         $treasuries = Treasury::orderBy('name')->get();
-        return view('sale-invoices.edit', compact('saleInvoice','clients','items','treasuries'));
+        $cycles     = Cycle::orderBy('name')->get();
+        $sheds      = Shed::orderBy('name')->get();
+        return view('sale-invoices.edit', compact('saleInvoice','clients','items','treasuries','cycles','sheds'));
     }
 
     public function update(Request $request, SaleInvoice $saleInvoice) {
         $request->validate([
             'invoice_number' => 'required|string|unique:sale_invoices,invoice_number,' . $saleInvoice->id,
             'client_id'      => 'required|exists:clients,id',
+            'cycle_id'       => 'nullable|exists:cycles,id',
+            'shed_id'        => 'nullable|exists:sheds,id',
             'invoice_date'   => 'required|date',
             'paid_amount'    => 'nullable|numeric|min:0',
             'treasury_id'    => 'nullable|exists:treasuries,id',
@@ -133,6 +155,8 @@ class SaleInvoiceController extends Controller
             $saleInvoice->update([
                 'invoice_number'  => $request->invoice_number,
                 'client_id'       => $request->client_id,
+                'cycle_id'        => $request->cycle_id,
+                'shed_id'         => $request->shed_id,
                 'treasury_id'     => $request->treasury_id,
                 'invoice_date'    => $request->invoice_date,
                 'total_amount'    => $totalAmount,
@@ -169,45 +193,38 @@ class SaleInvoiceController extends Controller
         $entry = JournalEntry::create([
             'entry_number'   => 'SAL-' . now()->format('Y') . '-' . str_pad($invoice->id, 4, '0', STR_PAD_LEFT),
             'entry_date'     => $invoice->invoice_date,
-            'description'    => 'فاتورة بيع رقم ' . $invoice->invoice_number,
+            'description'    => 'إثبات مبيعات فاتورة رقم ' . $invoice->invoice_number,
             'reference_type' => 'sale_invoice',
             'reference_id'   => $invoice->id,
         ]);
 
-        if ($invoice->payment_status === 'paid' && (float)$invoice->paid_amount >= (float)$invoice->total_amount && $invoice->treasury_id) {
-            JournalEntryLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_type'     => 'treasury',
-                'account_id'       => $invoice->treasury_id,
-                'debit'            => $invoice->total_amount,
-                'credit'           => 0,
-                'description'      => 'مبيعات كاش - فاتورة بيع رقم ' . $invoice->invoice_number,
-            ]);
-        } else {
-            JournalEntryLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_type'     => 'client',
-                'account_id'       => $invoice->client_id,
-                'debit'            => $invoice->total_amount,
-                'credit'           => 0,
-                'description'      => 'مبيعات آجلة - فاتورة بيع رقم ' . $invoice->invoice_number,
-            ]);
-        }
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_type'     => 'client',
+            'account_id'       => $invoice->client_id,
+            'debit'            => $invoice->total_amount,
+            'credit'           => 0,
+            'description'      => 'إثبات مبيعات - فاتورة رقم ' . $invoice->invoice_number,
+        ]);
+
+        $salesAccount = \App\Models\ChartOfAccount::where('code', '4100')->first();
+        $salesAccountType = $salesAccount ? 'chart_of_account' : 'sales';
+        $salesAccountId = $salesAccount ? $salesAccount->id : 0;
 
         JournalEntryLine::create([
             'journal_entry_id' => $entry->id,
-            'account_type'     => 'sales',
-            'account_id'       => 0,
+            'account_type'     => $salesAccountType,
+            'account_id'       => $salesAccountId,
             'debit'            => 0,
             'credit'           => $invoice->total_amount,
-            'description'      => 'إيرادات مبيعات - فاتورة بيع رقم ' . $invoice->invoice_number,
+            'description'      => 'إيرادات مبيعات - فاتورة رقم ' . $invoice->invoice_number,
         ]);
 
-        if ((float)$invoice->paid_amount > 0 && $invoice->treasury_id && (float)$invoice->paid_amount < (float)$invoice->total_amount) {
+        if ((float)$invoice->paid_amount > 0 && $invoice->treasury_id) {
             $paymentEntry = JournalEntry::create([
                 'entry_number'   => JournalEntry::generateNumber(),
                 'entry_date'     => $invoice->invoice_date,
-                'description'    => 'تحصيل فاتورة بيع رقم ' . $invoice->invoice_number,
+                'description'    => 'تحصيل نقدي - فاتورة بيع رقم ' . $invoice->invoice_number,
                 'reference_type' => 'sale_invoice_payment',
                 'reference_id'   => $invoice->id,
             ]);

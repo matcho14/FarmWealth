@@ -141,7 +141,16 @@
                             </td>
                             <td>
                                 @if($rowType === 'account')
-                                    <a href="{{ route('chart-of-accounts.transactions', $acc->id) }}" class="btn btn-sm btn-info" style="margin-left: 8px;"><i class="fa-solid fa-chart-bar"></i>عرض العمليات</a>
+                                    @if(in_array($acc->code, ['feed_purchase', 'medicine_purchase', 'other_purchase']))
+                                        @php
+                                            $cat = '';
+                                            if($acc->code === 'feed_purchase') $cat = 'feed';
+                                            elseif($acc->code === 'medicine_purchase') $cat = 'medicine';
+                                            elseif($acc->code === 'other_purchase') $cat = 'other';
+                                        @endphp
+                                        <a href="{{ route('purchase-invoices.index', ['category' => $cat]) }}" class="btn btn-sm btn-success" style="margin-left: 8px;"><i class="fa-solid fa-file-invoice"></i> تفاصيل الشراء</a>
+                                    @endif
+                                    <a href="{{ route('chart-of-accounts.transactions', $acc->id) }}" class="btn btn-sm btn-info" style="margin-left: 8px;"><i class="fa-solid fa-chart-bar"></i> عرض العمليات</a>
                                     <a href="{{ route('chart-of-accounts.edit', $acc) }}" class="btn btn-sm btn-warning">
                                         <i class="fa-solid fa-edit"></i> تعديل
                                     </a>

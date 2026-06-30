@@ -29,6 +29,26 @@
                     </select>
                     @error('client_id')<span class="invalid-feedback">{{ $message }}</span>@enderror
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label">الدورة (اختياري)</label>
+                    <select name="cycle_id" class="form-select @error('cycle_id') is-invalid @enderror">
+                        <option value="">-- بدون دورة --</option>
+                        @foreach($cycles as $cycle)
+                            <option value="{{ $cycle->id }}" {{ old('cycle_id') == $cycle->id ? 'selected' : '' }}>{{ $cycle->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('cycle_id')<span class="invalid-feedback">{{ $message }}</span>@enderror
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">العنبر (اختياري)</label>
+                    <select name="shed_id" class="form-select @error('shed_id') is-invalid @enderror">
+                        <option value="">-- بدون عنبر --</option>
+                        @foreach($sheds as $shed)
+                            <option value="{{ $shed->id }}" {{ old('shed_id') == $shed->id ? 'selected' : '' }}>{{ $shed->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('shed_id')<span class="invalid-feedback">{{ $message }}</span>@enderror
+                </div>
             </div>
 
             {{-- جدول الأصناف --}}

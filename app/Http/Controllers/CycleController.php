@@ -582,42 +582,58 @@ class CycleController extends Controller
                 'reference_type' => 'financial_record',
                 'reference_id'   => $record->id,
             ]);
+        } else {
+            $entry->update([
+                'entry_date'  => $data['record_date'],
+                'description' => 'مبيعات دورة: ' . $description,
+            ]);
+            $entry->lines()->delete();
         }
 
-        $entry->update([
-            'entry_date'  => $data['record_date'],
-            'description' => 'مبيعات دورة: ' . $description,
+        $salesAccount = \App\Models\ChartOfAccount::where('code', '4100')->first();
+        $salesAccountType = $salesAccount ? 'chart_of_account' : 'sales';
+        $salesAccountId = $salesAccount ? $salesAccount->id : 0;
+
+        $paidAmount = $data['payment_type'] === 'cash' ? $data['amount'] : ($data['paid_amount'] ?? 0);
+
+        // 1. قيد إثبات المبيعات: من حساب العميل إلى المبيعات
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_type'     => 'client',
+            'account_id'       => $data['client_id'],
+            'debit'            => $data['amount'],
+            'credit'           => 0,
+            'description'      => 'إثبات مبيعات دورة - ' . $description,
         ]);
 
-        $entry->lines()->delete();
+        JournalEntryLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_type'     => $salesAccountType,
+            'account_id'       => $salesAccountId,
+            'debit'            => 0,
+            'credit'           => $data['amount'],
+            'description'      => 'إيرادات مبيعات دورة',
+        ]);
 
-        if ($data['payment_type'] === 'cash') {
+        // 2. قيد التحصيل: من حساب الخزينة إلى العميل
+        if ($paidAmount > 0) {
             JournalEntryLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_type'     => 'treasury',
-                'account_id'       => $data['treasury_id'],
-                'debit'            => $data['amount'],
+                'account_id'       => $data['treasury_id'] ?? 1,
+                'debit'            => $paidAmount,
                 'credit'           => 0,
-                'description'      => $description . ' - مبيعات كاش',
+                'description'      => 'تحصيل نقدي - ' . $description,
             ]);
-        } else {
+
             JournalEntryLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_type'     => 'client',
                 'account_id'       => $data['client_id'],
-                'debit'            => $data['amount'],
-                'credit'           => 0,
-                'description'      => $description . ' - مبيعات آجلة',
+                'debit'            => 0,
+                'credit'           => $paidAmount,
+                'description'      => 'سداد مقابل مبيعات الدورة',
             ]);
         }
-
-        JournalEntryLine::create([
-            'journal_entry_id' => $entry->id,
-            'account_type'     => 'cycle',
-            'account_id'       => $cycle->id,
-            'debit'            => 0,
-            'credit'           => $data['amount'],
-            'description'      => 'إيرادات مبيعات',
-        ]);
     }
 }

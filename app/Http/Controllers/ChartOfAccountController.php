@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\ChartOfAccount;
 use App\Models\Shed;
+use App\Models\PurchaseInvoice;
+use App\Models\CycleDispensation;
+use App\Models\FinancialRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -39,27 +42,31 @@ class ChartOfAccountController extends Controller
 
             if ($account->code === '1120' && $clients->isNotEmpty()) {
                 foreach ($clients as $client) {
-                    $rows[] = [
-                        'type' => 'client',
-                        'account' => $client,
-                        'level' => $level + 1,
-                        'hasChildren' => false,
-                        'isDynamic' => false,
-                        'full_code' => $currentFullCode . '.' . $client->id,
-                    ];
+                    if (!$client->chartAccount) {
+                        $rows[] = [
+                            'type' => 'client',
+                            'account' => $client,
+                            'level' => $level + 1,
+                            'hasChildren' => false,
+                            'isDynamic' => false,
+                            'full_code' => $currentFullCode . '.' . $client->id,
+                        ];
+                    }
                 }
             }
 
             if ($account->code === '2110' && $suppliers->isNotEmpty()) {
                 foreach ($suppliers as $supplier) {
-                    $rows[] = [
-                        'type' => 'supplier',
-                        'account' => $supplier,
-                        'level' => $level + 1,
-                        'hasChildren' => false,
-                        'isDynamic' => false,
-                        'full_code' => $currentFullCode . '.' . $supplier->id,
-                    ];
+                    if (!$supplier->chartAccount) {
+                        $rows[] = [
+                            'type' => 'supplier',
+                            'account' => $supplier,
+                            'level' => $level + 1,
+                            'hasChildren' => false,
+                            'isDynamic' => false,
+                            'full_code' => $currentFullCode . '.' . $supplier->id,
+                        ];
+                    }
                 }
             }
 
@@ -213,19 +220,113 @@ class ChartOfAccountController extends Controller
 
     public function showTransactions(ChartOfAccount $chartOfAccount)
     {
-        $transactions = \App\Models\JournalEntryLine::where('account_type', 'chart_of_account')
-            ->where('account_id', $chartOfAccount->id)
+        $query = \App\Models\JournalEntryLine::query()
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
             ->select(
                 'journal_entry_lines.*',
                 'journal_entries.entry_date',
                 'journal_entries.description as entry_description',
-                'journal_entries.entry_number'
-            )
-            ->orderByDesc('journal_entries.entry_date')
+                'journal_entries.entry_number',
+                'journal_entries.reference_type',
+                'journal_entries.reference_id'
+            );
+
+        $query->where(function($q) use ($chartOfAccount) {
+            $q->where(function($sub) use ($chartOfAccount) {
+                $sub->where('journal_entry_lines.account_type', 'chart_of_account')
+                    ->where('journal_entry_lines.account_id', $chartOfAccount->id);
+            });
+
+            if ($chartOfAccount->linkable_type && $chartOfAccount->linkable_id) {
+                $type = '';
+                if ($chartOfAccount->linkable_type === \App\Models\Client::class || $chartOfAccount->linkable_type === 'Client') {
+                    $type = 'client';
+                } elseif ($chartOfAccount->linkable_type === \App\Models\Supplier::class || $chartOfAccount->linkable_type === 'Supplier') {
+                    $type = 'supplier';
+                }
+                
+                if ($type) {
+                    $q->orWhere(function($sub) use ($type, $chartOfAccount) {
+                        $sub->where('journal_entry_lines.account_type', $type)
+                            ->where('journal_entry_lines.account_id', $chartOfAccount->linkable_id);
+                    });
+                }
+            }
+        });
+
+        $transactions = $query->orderByDesc('journal_entries.entry_date')
             ->orderByDesc('journal_entry_lines.id')
             ->paginate(15);
 
-        return view('chart-of-accounts.transactions', compact('chartOfAccount', 'transactions'));
+        // جلب تفاصيل فواتير الشراء المرتبطة بالعمليات
+        $purchaseInvoiceIds = $transactions->getCollection()
+            ->where('reference_type', 'purchase_invoice')
+            ->pluck('reference_id')
+            ->unique()
+            ->filter();
+
+        $purchaseInvoices = [];
+        if ($purchaseInvoiceIds->isNotEmpty()) {
+            $purchaseInvoices = PurchaseInvoice::with([
+                'supplier',
+                'treasury',
+                'items.item',
+            ])->whereIn('id', $purchaseInvoiceIds)->get()->keyBy('id');
+        }
+
+        $saleInvoiceIds = $transactions->getCollection()
+            ->where('reference_type', 'sale_invoice')
+            ->pluck('reference_id')
+            ->unique()
+            ->filter();
+
+        $saleInvoices = [];
+        if ($saleInvoiceIds->isNotEmpty()) {
+            $saleInvoices = \App\Models\SaleInvoice::with([
+                'client',
+                'treasury',
+                'items.item',
+                'cycle',
+                'shed',
+            ])->whereIn('id', $saleInvoiceIds)->get()->keyBy('id');
+        }
+
+
+        // جلب تفاصيل سجلات الصرف المالي (صرف علف/دواء على الدورات)
+        $financialRecordIds = $transactions->getCollection()
+            ->where('reference_type', 'financial_record')
+            ->pluck('reference_id')
+            ->unique()
+            ->filter();
+
+        $financialRecords = [];
+        if ($financialRecordIds->isNotEmpty()) {
+            $financialRecords = FinancialRecord::with([
+                'cycle.shed',
+                'shed',
+            ])->whereIn('id', $financialRecordIds)->get()->keyBy('id');
+        }
+
+        // جلب عمليات الصرف على الدورات لكل صنف من فواتير الشراء
+        $itemIds = collect($purchaseInvoices)->flatMap(fn($inv) => $inv->items->pluck('item_id'))->unique()->filter();
+        $dispensationsByItem = [];
+        if ($itemIds->isNotEmpty()) {
+            $dispensations = CycleDispensation::with(['cycle.shed', 'shed', 'item'])
+                ->whereIn('item_id', $itemIds)
+                ->orderBy('dispensation_date')
+                ->get();
+            foreach ($dispensations as $d) {
+                $dispensationsByItem[$d->item_id][] = $d;
+            }
+        }
+
+        return view('chart-of-accounts.transactions', compact(
+            'chartOfAccount',
+            'transactions',
+            'purchaseInvoices',
+            'saleInvoices',
+            'financialRecords',
+            'dispensationsByItem'
+        ));
     }
 }
